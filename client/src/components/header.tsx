@@ -44,7 +44,6 @@ export function Header({ children }: { children?: React.ReactNode }) {
                                     <NavItem title="文章" selected={location === "/" || location.startsWith('/feed')} href="/" />
                                     <NavItem title="时间轴" selected={location === "/timeline"} href="/timeline" />
                                     {profile?.permission && <NavItem title="写作" selected={location.startsWith("/writing")} href="/writing" />}
-                                    <NavItem title="朋友们" selected={location === "/friends"} href="/friends" />
                                     <NavItem title="关于" selected={location === "/about"} href="/about" />
                                     {children}
                                     <Menu />
@@ -130,7 +129,6 @@ function Menu() {
                     <NavItem onClick={onClose} always={true} title="文章" selected={location === "/" || location.startsWith('/feed')} href="/" />
                     <NavItem onClick={onClose} always={true} title="时间轴" selected={location === "/timeline"} href="/timeline" />
                     {profile?.permission && <NavItem onClick={onClose} always={true} title="写作" selected={location.startsWith("/writing")} href="/writing" />}
-                    <NavItem onClick={onClose} always={true} title="朋友们" selected={location === "/friends"} href="/friends" />
                     <NavItem onClick={onClose} always={true} title="关于" selected={location === "/about"} href="/about" />
                 </div>
             </Popup>
