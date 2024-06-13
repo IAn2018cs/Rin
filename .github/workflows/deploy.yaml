@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - dev
-      - main
   workflow_dispatch:
 
 jobs:
@@ -24,8 +23,6 @@ jobs:
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: 1.1.12
 
       - name: Deploy
         env: # Or as an environment variable
