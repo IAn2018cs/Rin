@@ -1,17 +1,19 @@
-import { format } from "@astroimg/timeago";
 import { useContext, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
 import ReactModal from "react-modal";
 import Popup from "reactjs-popup";
 import { Link, useLocation } from "wouter";
+import { useAlert, useConfirm } from "../components/dialog";
+import { HashTag } from "../components/hashtag";
 import { Waiting } from "../components/loading";
 import { Markdown } from "../components/markdown";
-import { TableOfContents } from "../components/toc";
 import { client } from "../main";
+import { ClientConfigContext } from "../state/config";
 import { ProfileContext } from "../state/profile";
 import { headersWithAuth } from "../utils/auth";
 import { siteName } from "../utils/constants";
+import { timeago } from "../utils/timeago";
 
 type Feed = {
   id: number;
@@ -29,9 +31,11 @@ type Feed = {
     id: number;
     username: string;
   };
+  pv: number;
+  uv: number;
 };
 
-export function FeedPage({ id }: { id: string }) {
+export function FeedPage({ id, TOC, clean }: { id: string, TOC: () => JSX.Element, clean: (id: string) => void }) {
   const { t } = useTranslation();
   const profile = useContext(ProfileContext);
   const [feed, setFeed] = useState<Feed>();
@@ -39,23 +43,31 @@ export function FeedPage({ id }: { id: string }) {
   const [headImage, setHeadImage] = useState<string>();
   const ref = useRef("");
   const [_, setLocation] = useLocation();
+  const { showAlert, AlertUI } = useAlert();
+  const { showConfirm, ConfirmUI } = useConfirm();
+  const config = useContext(ClientConfigContext);
+  const counterEnabled = config.get<boolean>('counter.enabled');
   function deleteFeed() {
     // Confirm
-    if (!confirm(t("article.delete.confirm"))) return;
-    if (!feed) return;
-    client
-      .feed({ id: feed.id })
-      .delete(null, {
-        headers: headersWithAuth(),
+    showConfirm(
+      t("article.delete.title"),
+      t("article.delete.confirm"),
+      () => {
+        if (!feed) return;
+        client
+          .feed({ id: feed.id })
+          .delete(null, {
+            headers: headersWithAuth(),
+          })
+          .then(({ error }) => {
+            if (error) {
+              showAlert(error.value as string);
+            } else {
+              showAlert(t("delete.success"));
+              setLocation("/");
+            }
+          });
       })
-      .then(({ error }) => {
-        if (error) {
-          alert(error.value);
-        } else {
-          alert(t("delete.success"));
-          setLocation("/");
-        }
-      });
   }
   useEffect(() => {
     if (ref.current == id) return;
@@ -79,6 +91,7 @@ export function FeedPage({ id }: { id: string }) {
             if (img_match) {
               setHeadImage(img_match[1]);
             }
+            clean(id);
           }, 0);
         }
       });
@@ -147,7 +160,7 @@ export function FeedPage({ id }: { id: string }) {
                         title={new Date(feed.createdAt).toLocaleString()}
                       >
                         {t("feed_card.published$time", {
-                          time: format(feed.createdAt),
+                          time: timeago(feed.createdAt),
                         })}
                       </p>
 
@@ -157,13 +170,24 @@ export function FeedPage({ id }: { id: string }) {
                           title={new Date(feed.updatedAt).toLocaleString()}
                         >
                           {t("feed_card.updated$time", {
-                            time: format(feed.updatedAt),
+                            time: timeago(feed.updatedAt),
                           })}
                         </p>
                       )}
                     </div>
+                    {counterEnabled && <p className='text-[12px] text-gray-400 font-normal link-line'>
+                      <span className="font-bold"> {t("count.pv")} </span>
+                      <span>
+                        {feed.pv}
+                      </span>
+                      <span> |</span>
+                      <span className="font-bold"> {t("count.uv")} </span>
+                      <span>
+                        {feed.uv}
+                      </span>
+                    </p>}
                     <div className="flex flex-row items-center">
-                      <h1 className="text-2xl font-bold t-primary">
+                      <h1 className="text-2xl font-bold t-primary break-all">
                         {feed.title}
                       </h1>
                       <div className="flex-1 w-0" />
@@ -193,14 +217,9 @@ export function FeedPage({ id }: { id: string }) {
                 <Markdown content={feed.content} />
                 <div className="mt-6 flex flex-col gap-2">
                   {feed.hashtags.length > 0 && (
-                    <div className="flex flex-row gap-2">
+                    <div className="flex flex-row flex-wrap gap-x-2">
                       {feed.hashtags.map(({ name }, index) => (
-                        <div className="flex gap-0.5">
-                          <div className="text-sm opacity-70 italic dark:text-gray-300">#</div>
-                          <div key={index} className="text-sm opacity-70 dark:text-gray-300">
-                            {name}
-                          </div>
-                        </div>
+                        <HashTag key={index} name={name} />
                       ))}
                     </div>
                   )}
@@ -217,20 +236,26 @@ export function FeedPage({ id }: { id: string }) {
                   </div>
                 </div>
               </article>
-              {feed && <Comments id={id} />}
+              {feed && <Comments id={`${feed.id}`} />}
               <div className="h-16" />
             </main>
             <div className="w-80 hidden lg:block relative">
-              <TOC />
+              <div
+                className={`ml-2 rounded-2xl bg-w py-4 px-4 start-0 end-0 top-[5.5rem] sticky t-primary`}
+              >
+                <TOC />
+              </div>
             </div>
           </>
         )}
       </div>
+      <AlertUI />
+      <ConfirmUI />
     </Waiting>
   );
 }
 
-export function TOCHeader() {
+export function TOCHeader({ TOC }: { TOC: () => JSX.Element }) {
   const [isOpened, setIsOpened] = useState(false);
 
   return (
@@ -267,20 +292,10 @@ export function TOCHeader() {
         }}
         onRequestClose={() => setIsOpened(false)}
       >
-        <div className="rounded-2xl bg-w py-4 px-4 fixed w-[80vw] sm:w-[60vw] lg:w-[40vw] overflow-clip relative t-primary">
-          <TableOfContents selector=".toc-content" />
+        <div className="rounded-2xl bg-w py-4 px-4 w-[80vw] sm:w-[60vw] lg:w-[40vw] overflow-clip relative t-primary">
+          <TOC />
         </div>
       </ReactModal>
-    </div>
-  );
-}
-
-export function TOC() {
-  return (
-    <div
-      className={`ml-2 rounded-2xl bg-w py-4 px-4 fixed start-0 end-0 top-[5.5rem] sticky t-primary`}
-    >
-      <TableOfContents selector=".toc-content" />
     </div>
   );
 }
@@ -295,6 +310,7 @@ function CommentInput({
   const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [error, setError] = useState("");
+  const { showAlert, AlertUI } = useAlert();
   function errorHumanize(error: string) {
     if (error === "Unauthorized") return t("login.required");
     else if (error === "Content is required") return t("comment.empty");
@@ -315,8 +331,9 @@ function CommentInput({
         } else {
           setContent("");
           setError("");
-          alert(t("comment.success"));
-          onRefresh();
+          showAlert(t("comment.success"), () => {
+            onRefresh();
+          });
         }
       });
   }
@@ -339,6 +356,7 @@ function CommentInput({
         {t("comment.submit")}
       </button>
       {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+      <AlertUI />
     </div>
   );
 }
@@ -421,23 +439,30 @@ function CommentItem({
   comment: Comment;
   onRefresh: () => void;
 }) {
+  const { showConfirm, ConfirmUI } = useConfirm();
+  const { showAlert, AlertUI } = useAlert();
   const { t } = useTranslation();
   const profile = useContext(ProfileContext);
   function deleteComment() {
-    if (!confirm(t("delete.comment.confirm"))) return;
-    client
-      .comment({ id: comment.id })
-      .delete(null, {
-        headers: headersWithAuth(),
+    showConfirm(
+      t("delete.comment.title"),
+      t("delete.comment.confirm"),
+      async () => {
+        client
+          .comment({ id: comment.id })
+          .delete(null, {
+            headers: headersWithAuth(),
+          })
+          .then(({ error }) => {
+            if (error) {
+              showAlert(error.value as string);
+            } else {
+              showAlert(t("delete.success"), () => {
+                onRefresh();
+              });
+            }
+          });
       })
-      .then(({ error }) => {
-        if (error) {
-          alert(error.value);
-        } else {
-          alert(t("delete.success"));
-          onRefresh();
-        }
-      });
   }
   return (
     <div className="flex flex-row items-start rounded-xl mt-2">
@@ -455,7 +480,7 @@ function CommentItem({
             title={new Date(comment.createdAt).toLocaleString()}
             className="text-gray-400 text-sm"
           >
-            {format(comment.createdAt)}
+            {timeago(comment.createdAt)}
           </span>
         </div>
         <p className="t-primary break-words">{comment.content}</p>
@@ -483,6 +508,8 @@ function CommentItem({
           )}
         </div>
       </div>
+      <ConfirmUI />
+      <AlertUI />
     </div>
   );
 }
